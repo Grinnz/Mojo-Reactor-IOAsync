@@ -288,7 +288,7 @@ the terms of the Artistic License version 2.0.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::IOLoop>, L<IO::Async>
+L<Mojolicious>, L<Mojo::IOLoop>, L<IO::Async>
 
 =cut
 
