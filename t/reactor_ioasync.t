@@ -231,7 +231,7 @@ package main;
 # Detection (env)
 is(Mojo::Reactor->detect, 'Mojo::Reactor::Test', 'right class');
 
-# IO::Async in control
+# Reactor in control
 $ENV{MOJO_REACTOR} = 'Mojo::Reactor::IOAsync';
 is ref Mojo::IOLoop->singleton->reactor, 'Mojo::Reactor::IOAsync', 'right object';
 ok !Mojo::IOLoop->is_running, 'loop is not running';
@@ -254,7 +254,7 @@ Mojo::IOLoop->client(
         my ($stream, $chunk) = @_;
         $buffer .= $chunk;
         return unless $buffer eq 'test321';
-        IO::Async::Loop->new->loop_stop();
+        Mojo::IOLoop->singleton->reactor->stop;
       }
     );
     $client_running = Mojo::IOLoop->is_running;
@@ -262,7 +262,7 @@ Mojo::IOLoop->client(
     $client_err = $@;
   }
 );
-IO::Async::Loop->new->loop_forever();
+Mojo::IOLoop->singleton->reactor->start;
 ok !Mojo::IOLoop->is_running, 'loop is not running';
 like $server_err, qr/^Mojo::IOLoop already running/, 'right error';
 like $client_err, qr/^Mojo::IOLoop already running/, 'right error';

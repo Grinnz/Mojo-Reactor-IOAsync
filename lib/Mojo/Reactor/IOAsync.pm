@@ -27,18 +27,32 @@ sub again {
 sub io {
 	my ($self, $handle, $cb) = @_;
 	my $fd = fileno $handle;
+	$self->remove($handle);
 	$self->{io}{$fd} = {cb => $cb};
 	warn "-- Set IO watcher for $fd\n" if DEBUG;
 	return $self->watch($handle, 1, 1);
 }
 
-sub is_running { # TODO
-}
+sub is_running { !!shift->{running} }
 
 # We have to fall back to Mojo::Reactor::Poll, since IO::Async::Loop is unique
 sub new { $IOAsync++ ? Mojo::Reactor::Poll->new : shift->SUPER::new }
 
-sub one_tick { shift->_loop->loop_once }
+sub one_tick {
+	my $self = shift;
+	
+	# Remember state for later
+	my $running = $self->{running};
+	$self->{running} = 1;
+	
+	# Stop automatically if there is nothing to watch
+	return $self->stop unless $self->_loop->notifiers;
+	
+	$self->_loop->loop_once;
+	
+	# Restore state if necessary
+	$self->{running} = $running if $self->{running};
+}
 
 sub recurring { shift->_timer(1, @_) }
 
@@ -49,17 +63,15 @@ sub remove {
 		my $fd = fileno $remove;
 		if (exists $self->{io}{$fd}) {
 			warn "-- Removed IO watcher for $fd\n" if DEBUG;
-			if (my $w = delete $self->{io}{$fd}{watcher}) {
-				$w->remove_from_parent;
-			}
+			my $w = delete $self->{io}{$fd}{watcher};
+			$w->remove_from_parent if $w;
 		}
 		return !!delete $self->{io}{$fd};
 	} else {
 		if (exists $self->{timers}{$remove}) {
 			warn "-- Removed timer $remove\n" if DEBUG;
-			if (my $w = delete $self->{timers}{$remove}{watcher}) {
-				$w->remove_from_parent;
-			}
+			my $w = delete $self->{timers}{$remove}{watcher};
+			$w->remove_from_parent if $w;
 		}
 		return !!delete $self->{timers}{$remove};
 	}
@@ -67,14 +79,28 @@ sub remove {
 
 sub reset {
 	my $self = shift;
-	$_->{watcher}->remove_from_parent for
-		grep { $_->{watcher} } (values %{$self->{io}}, values %{$self->{timers}});
-	delete @{$self}{qw(io loop timers)};
+	foreach my $id (keys %{$self->{timers}}) {
+		my $w = delete $self->{timers}{$id}{watcher};
+		$w->remove_from_parent if $w;
+	}
+	foreach my $fd (keys %{$self->{io}}) {
+		my $w = delete $self->{io}{$fd}{watcher};
+		$w->remove_from_parent if $w;
+	}
+	delete @{$self}{qw(io timers)};
 }
 
-sub start { shift->_loop->loop_forever }
+sub start {
+	my $self = shift;
+	$self->{running}++;
+	$self->one_tick while $self->{running};
+}
 
-sub stop { shift->_loop->loop_stop }
+sub stop {
+	my $self = shift;
+	delete $self->{running};
+	$self->_loop->loop_stop;
+}
 
 sub timer { shift->_timer(0, @_) }
 
@@ -83,17 +109,17 @@ sub watch {
 	
 	my $fd = fileno $handle;
 	my $io = $self->{io}{$fd};
-	if (!$read and !$write) {
-		if (my $w = delete $io->{watcher}) { $w->remove_from_parent }
-	} elsif (my $w = $io->{watcher}) {
+	if (my $w = $io->{watcher}) {
 		$w->want_readready($read);
 		$w->want_writeready($write);
 	} else {
 		weaken $self;
 		my $w = $io->{watcher} = IO::Async::Handle->new(
 			handle => $handle,
-			on_read_ready => sub { $self->_sandbox('Read', $io->{cb}, 0) },
-			on_write_ready => sub { $self->_sandbox('Write', $io->{cb}, 1) },
+			on_read_ready => sub { $self->_io($fd, 0) },
+			on_write_ready => sub { $self->_io($fd, 1) },
+			want_readready => $read,
+			want_writeready => $write,
 		);
 		$self->_loop->add($w);
 	}
@@ -106,6 +132,13 @@ sub _id {
 	my $id;
 	do { $id = md5_sum 't' . $self->_loop->time . rand 999 } while $self->{timers}{$id};
 	return $id;
+}
+
+sub _io {
+	my ($self, $fd, $writable) = @_;
+	my $io = $self->{io}{$fd};
+	#warn "-- Event fired for IO watcher $fd\n" if DEBUG;
+	$self->_sandbox($writable ? 'Write' : 'Read', $io->{cb}, $writable);
 }
 
 sub _loop { shift->{loop} ||= IO::Async::Loop->new }
@@ -130,6 +163,7 @@ sub _timer {
 				$w->remove_from_parent;
 				delete $self->{timers}{$id};
 			}
+			#warn "-- Event fired for timer $id\n" if DEBUG;
 			$self->_sandbox("Timer $id", $cb);
 		},
 	)->start;
@@ -249,7 +283,7 @@ Remove all handles and timers.
   $reactor->start;
 
 Start watching for I/O and timer events, this will block until L</"stop"> is
-called or no events are being watched anymore.
+called or no events are being watched anymore. See L</"CAVEATS">.
 
 =head2 stop
 
@@ -270,6 +304,18 @@ seconds.
 
 Change I/O events to watch handle for with true and false values. Note that
 this method requires an active I/O watcher.
+
+=head1 CAVEATS
+
+When using L<Mojo::IOLoop> with L<IO::Async>, the event loop must be controlled
+by L<Mojo::IOLoop> or L<Mojo::Reactor::IOAsync>, such as with the methods
+L</"start">, L</"stop">, and L</"one_tick">. Starting or stopping the event
+loop through L<IO::Async> will not provide required functionality to
+L<Mojo::IOLoop> applications.
+
+Externally-added L<IO::Async> notifiers will keep the L<Mojo::IOLoop> loop
+running if they are added to the event loop as a notifier, see
+L<IO::Async::Loop/"NOTIFIER-MANAGEMENT">.
 
 =head1 BUGS
 
