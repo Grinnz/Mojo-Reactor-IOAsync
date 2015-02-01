@@ -79,14 +79,9 @@ sub remove {
 
 sub reset {
 	my $self = shift;
-	foreach my $id (keys %{$self->{timers}}) {
-		my $w = delete $self->{timers}{$id}{watcher};
-		$w->remove_from_parent if $w;
-	}
-	foreach my $fd (keys %{$self->{io}}) {
-		my $w = delete $self->{io}{$fd}{watcher};
-		$w->remove_from_parent if $w;
-	}
+	$_->remove_from_parent for
+		grep { defined } map { delete $_->{watcher} }
+		values %{$self->{io}}, values %{$self->{timers}};
 	delete @{$self}{qw(io timers)};
 }
 
