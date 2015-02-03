@@ -138,7 +138,7 @@ L<Mojo::IOLoop> applications.
 
 Externally-added L<IO::Async> notifiers will keep the L<Mojo::IOLoop> loop
 running if they are added to the event loop as a notifier, see
-L<IO::Async::Loop/"NOTIFIER-MANAGEMENT">.
+L<IO::Async::Loop/"NOTIFIER MANAGEMENT">.
 
 =head1 BUGS
 
