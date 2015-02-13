@@ -206,9 +206,9 @@ Mojo::Reactor::IOAsync - IO::Async backend for Mojo::Reactor
 =head1 DESCRIPTION
 
 L<Mojo::Reactor::IOAsync> is an event reactor for L<Mojo::IOLoop> that uses
-L<IO::Async>. The usage is exactly the same as other L<Mojo::Reactor> backends
-such as L<Mojo::Reactor::Poll>. To set it as the default backend for
-L<Mojo::Reactor>, set the C<MOJO_REACTOR> environment variable to
+L<IO::Async>. The usage is exactly the same as other L<Mojo::Reactor>
+implementations such as L<Mojo::Reactor::Poll>. To set it as the default
+backend for L<Mojo::IOLoop>, set the C<MOJO_REACTOR> environment variable to
 C<Mojo::Reactor::IOAsync>. This must be set before L<Mojo::IOLoop> is loaded.
 
 =head1 EVENTS
@@ -309,7 +309,7 @@ L<Mojo::IOLoop> applications.
 
 Externally-added L<IO::Async> notifiers will keep the L<Mojo::IOLoop> loop
 running if they are added to the event loop as a notifier, see
-L<IO::Async::Loop/"NOTIFIER-MANAGEMENT">.
+L<IO::Async::Loop/"NOTIFIER MANAGEMENT">.
 
 =head1 BUGS
 
