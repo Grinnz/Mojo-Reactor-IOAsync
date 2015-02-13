@@ -27,8 +27,7 @@ sub again {
 sub io {
 	my ($self, $handle, $cb) = @_;
 	my $fd = fileno $handle;
-	$self->remove($handle);
-	$self->{io}{$fd} = {cb => $cb};
+	$self->{io}{$fd}{cb} = $cb;
 	warn "-- Set IO watcher for $fd\n" if DEBUG;
 	return $self->watch($handle, 1, 1);
 }
