@@ -1,4 +1,6 @@
 {{$NEXT}}
+  - More efficiency when overwriting existing I/O callback
+  - Update IO::Async requirement to 0.65 for select bugfix RT#101919
 
 0.001     2015-02-01 16:49:26-05:00 America/New_York
   - First release
