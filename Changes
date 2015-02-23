@@ -1,4 +1,7 @@
 {{$NEXT}}
+  - Remove deprecated is_readable method from tests
+  - Set default Mojo::Reactor
+  - Add hypnotoad example to synopsis
 
 0.002     2015-02-15 13:20:18-05:00 America/New_York
   - More efficiency when overwriting existing I/O callback

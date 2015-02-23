@@ -1,6 +1,8 @@
 package Mojo::Reactor::IOAsync;
 use Mojo::Base 'Mojo::Reactor';
 
+$ENV{MOJO_REACTOR} ||= 'Mojo::Reactor::IOAsync';
+
 use IO::Async::Loop;
 use IO::Async::Handle;
 use IO::Async::Timer::Countdown;
@@ -200,16 +202,22 @@ Mojo::Reactor::IOAsync - IO::Async backend for Mojo::Reactor
   $reactor->start unless $reactor->is_running;
 
   # Or in an application using Mojo::IOLoop
-  BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::IOAsync' }
+  use Mojo::Reactor::IOAsync;
   use Mojo::IOLoop;
+  
+  # Or in a Mojolicious application
+  $ MOJO_REACTOR=Mojo::Reactor::IOAsync hypnotoad script/myapp
 
 =head1 DESCRIPTION
 
 L<Mojo::Reactor::IOAsync> is an event reactor for L<Mojo::IOLoop> that uses
 L<IO::Async>. The usage is exactly the same as other L<Mojo::Reactor>
-implementations such as L<Mojo::Reactor::Poll>. To set it as the default
-backend for L<Mojo::IOLoop>, set the C<MOJO_REACTOR> environment variable to
-C<Mojo::Reactor::IOAsync>. This must be set before L<Mojo::IOLoop> is loaded.
+implementations such as L<Mojo::Reactor::Poll>. L<Mojo::Reactor::IOAsync> will
+be used as the default backend for L<Mojo::IOLoop> if it is loaded before
+L<Mojo::IOLoop> or any module using the loop. However, when invoking a
+L<Mojolicious> application through L<morbo> or L<hypnotoad>, the reactor must
+be set as the default by setting the C<MOJO_REACTOR> environment variable to
+C<Mojo::Reactor::IOAsync>.
 
 =head1 EVENTS
 
