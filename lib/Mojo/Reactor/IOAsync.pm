@@ -112,10 +112,12 @@ sub watch {
 		$w->want_writeready($write);
 	} else {
 		weaken $self;
+		my $on_read = sub { $self->_sandbox('Read', $self->{io}{$fd}{cb}, 0) };
+		my $on_write = sub { $self->_sandbox('Write', $self->{io}{$fd}{cb}, 1) };
 		my $w = $io->{watcher} = IO::Async::Handle->new(
 			handle => $handle,
-			on_read_ready => sub { $self->_io($fd, 0) },
-			on_write_ready => sub { $self->_io($fd, 1) },
+			on_read_ready => $on_read,
+			on_write_ready => $on_write,
 			want_readready => $read,
 			want_writeready => $write,
 		);
@@ -132,13 +134,6 @@ sub _id {
 	return $id;
 }
 
-sub _io {
-	my ($self, $fd, $writable) = @_;
-	my $io = $self->{io}{$fd};
-	#warn "-- Event fired for IO watcher $fd\n" if DEBUG;
-	$self->_sandbox($writable ? 'Write' : 'Read', $io->{cb}, $writable);
-}
-
 sub _loop { shift->{loop} ||= IO::Async::Loop->new }
 
 sub _sandbox {
@@ -151,19 +146,20 @@ sub _timer {
 	
 	my $id = $self->_id;
 	weaken $self;
+	my $on_expire = sub {
+		my $w = shift;
+		if ($recurring) {
+			$w->start;
+		} else {
+			$w->remove_from_parent;
+			delete $self->{timers}{$id};
+		}
+		#warn "-- Event fired for timer $id\n" if DEBUG;
+		$self->_sandbox("Timer $id", $cb);
+	};
 	my $w = $self->{timers}{$id}{watcher} = IO::Async::Timer::Countdown->new(
 		delay => $after,
-		on_expire => sub {
-			my $w = shift;
-			if ($recurring) {
-				$w->start;
-			} else {
-				$w->remove_from_parent;
-				delete $self->{timers}{$id};
-			}
-			#warn "-- Event fired for timer $id\n" if DEBUG;
-			$self->_sandbox("Timer $id", $cb);
-		},
+		on_expire => $on_expire,
 	)->start;
 	$self->_loop->add($w);
 	
