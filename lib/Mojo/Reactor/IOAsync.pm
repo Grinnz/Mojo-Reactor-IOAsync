@@ -3,6 +3,7 @@ use Mojo::Base 'Mojo::Reactor';
 
 $ENV{MOJO_REACTOR} ||= 'Mojo::Reactor::IOAsync';
 
+use Carp 'croak';
 use IO::Async::Loop;
 use IO::Async::Handle;
 use IO::Async::Timer::Countdown;
@@ -23,7 +24,8 @@ sub DESTROY {
 
 sub again {
 	my ($self, $id) = @_;
-	$self->{timers}{$id}{watcher}->reset;
+	croak 'Timer not active' unless my $timer = $self->{timers}{$id};
+	$timer->{watcher}->reset;
 }
 
 sub io {
@@ -104,7 +106,7 @@ sub watch {
 	my ($self, $handle, $read, $write) = @_;
 	
 	my $fd = fileno $handle;
-	my $io = $self->{io}{$fd};
+	croak 'I/O watcher not active' unless my $io = $self->{io}{$fd};
 	if (my $w = $io->{watcher}) {
 		$w->want_readready($read);
 		$w->want_writeready($write);
@@ -232,7 +234,7 @@ implements the following new ones.
 
   $reactor->again($id);
 
-Restart active timer.
+Restart timer. Note that this method requires an active timer.
 
 =head2 io
 
