@@ -5,8 +5,6 @@ $ENV{MOJO_REACTOR} ||= 'Mojo::Reactor::IOAsync';
 
 use Carp 'croak';
 use IO::Async::Loop;
-use IO::Async::Handle;
-use IO::Async::Timer::Countdown;
 use Mojo::Reactor::Poll;
 use Mojo::Util 'md5_sum';
 use Scalar::Util 'weaken';
@@ -25,7 +23,8 @@ sub DESTROY {
 sub again {
 	my ($self, $id) = @_;
 	croak 'Timer not active' unless my $timer = $self->{timers}{$id};
-	$timer->{watcher}->reset;
+	$self->_loop->unwatch_time($timer->{loop_id}) if defined $timer->{loop_id};
+	$self->_enqueue($id);
 }
 
 sub io {
@@ -49,7 +48,8 @@ sub one_tick {
 	$self->{running} = 1;
 	
 	# Stop automatically if there is nothing to watch
-	return $self->stop unless $self->_loop->notifiers;
+	return $self->stop unless keys %{$self->{io}} or keys %{$self->{timers}}
+		or $self->_loop->notifiers;
 	
 	$self->_loop->loop_once;
 	
@@ -66,15 +66,16 @@ sub remove {
 		my $fd = fileno $remove;
 		if (exists $self->{io}{$fd}) {
 			warn "-- Removed IO watcher for $fd\n" if DEBUG;
-			my $w = delete $self->{io}{$fd}{watcher};
-			$w->remove_from_parent if $w;
+			my $handle = delete $self->{io}{$fd}{handle};
+			$self->_loop->unwatch_io(handle => $handle, on_read_ready => 1, on_write_ready => 1)
+				if defined $handle;
 		}
 		return !!delete $self->{io}{$fd};
 	} else {
 		if (exists $self->{timers}{$remove}) {
 			warn "-- Removed timer $remove\n" if DEBUG;
-			my $w = delete $self->{timers}{$remove}{watcher};
-			$w->remove_from_parent if $w;
+			my $loop_id = delete $self->{timers}{$remove}{loop_id};
+			$self->_loop->unwatch_time($loop_id) if defined $loop_id;
 		}
 		return !!delete $self->{timers}{$remove};
 	}
@@ -82,9 +83,7 @@ sub remove {
 
 sub reset {
 	my $self = shift;
-	$_->remove_from_parent for
-		grep { defined } map { delete $_->{watcher} }
-		values %{$self->{io}}, values %{$self->{timers}};
+	$self->remove($_) for keys %{$self->{io}}, keys %{$self->{timers}};
 	delete @{$self}{qw(io timers)};
 }
 
@@ -107,23 +106,46 @@ sub watch {
 	
 	my $fd = fileno $handle;
 	croak 'I/O watcher not active' unless my $io = $self->{io}{$fd};
-	if (my $w = $io->{watcher}) {
-		$w->want_readready($read);
-		$w->want_writeready($write);
+	$io->{handle} = $handle;
+	weaken $self;
+	if ($read) {
+		my $on_read = sub {
+			my $cb = exists $self->{io}{$fd} ? $self->{io}{$fd}{cb} : undef;
+			$self->_sandbox('Read', $cb, 0) if $cb;
+		};
+		$self->_loop->watch_io(handle => $handle, on_read_ready => $on_read);
 	} else {
-		weaken $self;
-		my $on_read = sub { $self->_sandbox('Read', $self->{io}{$fd}{cb}, 0) };
-		my $on_write = sub { $self->_sandbox('Write', $self->{io}{$fd}{cb}, 1) };
-		my $w = $io->{watcher} = IO::Async::Handle->new(
-			handle => $handle,
-			on_read_ready => $on_read,
-			on_write_ready => $on_write,
-			want_readready => $read,
-			want_writeready => $write,
-		);
-		$self->_loop->add($w);
+		$self->_loop->unwatch_io(handle => $handle, on_read_ready => 1);
+	}
+	if ($write) {
+		my $on_write = sub {
+			my $cb = exists $self->{io}{$fd} ? $self->{io}{$fd}{cb} : undef;
+			$self->_sandbox('Write', $cb, 1) if $cb;
+		};
+		$self->_loop->watch_io(handle => $handle, on_write_ready => $on_write);
+	} else {
+		$self->_loop->unwatch_io(handle => $handle, on_write_ready => 1);
 	}
 	
+	return $self;
+}
+
+sub _enqueue {
+	my ($self, $id) = @_;
+	croak 'Timer not found' unless my $timer = $self->{timers}{$id};
+	weaken $self;
+	my $on_expire = sub {
+		my $timer = $self->{timers}{$id};
+		if ($timer->{recurring}) {
+			$self->_enqueue($id);
+		} else {
+			delete $self->{timers}{$id};
+		}
+		#warn "-- Event fired for timer $id\n" if DEBUG;
+		$self->_sandbox("Timer $id", $timer->{cb}) if $timer->{cb};
+	};
+	my $loop_id = $self->_loop->watch_time(after => $timer->{after}, code => $on_expire);
+	$timer->{loop_id} = $loop_id;
 	return $self;
 }
 
@@ -145,23 +167,12 @@ sub _timer {
 	my ($self, $recurring, $after, $cb) = @_;
 	
 	my $id = $self->_id;
-	weaken $self;
-	my $on_expire = sub {
-		my $w = shift;
-		if ($recurring) {
-			$w->start;
-		} else {
-			$w->remove_from_parent;
-			delete $self->{timers}{$id};
-		}
-		#warn "-- Event fired for timer $id\n" if DEBUG;
-		$self->_sandbox("Timer $id", $cb);
+	$self->{timers}{$id} = {
+		recurring => $recurring,
+		after => $after,
+		cb => $cb,
 	};
-	my $w = $self->{timers}{$id}{watcher} = IO::Async::Timer::Countdown->new(
-		delay => $after,
-		on_expire => $on_expire,
-	)->start;
-	$self->_loop->add($w);
+	$self->_enqueue($id);
 	
 	if (DEBUG) {
 		my $is_recurring = $recurring ? ' (recurring)' : '';
