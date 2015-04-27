@@ -41,6 +41,13 @@ sub is_running { !!shift->{running} }
 # We have to fall back to Mojo::Reactor::Poll, since IO::Async::Loop is unique
 sub new { $IOAsync++ ? Mojo::Reactor::Poll->new : shift->SUPER::new }
 
+sub next_tick {
+	my ($self, $cb) = @_;
+	push @{$self->{next_tick}}, $cb;
+	$self->{next_timer} //= $self->timer(0 => \&_next);
+	return undef;
+}
+
 sub one_tick {
 	my $self = shift;
 	
@@ -85,7 +92,7 @@ sub reset {
 	$_->remove_from_parent for
 		grep { defined } map { delete $_->{watcher} }
 		values %{$self->{io}}, values %{$self->{timers}};
-	delete @{$self}{qw(io timers)};
+	delete @{$self}{qw(io next_tick next_timer timers)};
 }
 
 sub start {
@@ -112,8 +119,8 @@ sub watch {
 		$w->want_writeready($write);
 	} else {
 		weaken $self;
-		my $on_read = sub { $self->_sandbox('Read', $self->{io}{$fd}{cb}, 0) };
-		my $on_write = sub { $self->_sandbox('Write', $self->{io}{$fd}{cb}, 1) };
+		my $on_read = sub { $self->_try('I/O watcher', $self->{io}{$fd}{cb}, 0) };
+		my $on_write = sub { $self->_try('I/O watcher', $self->{io}{$fd}{cb}, 1) };
 		my $w = $io->{watcher} = IO::Async::Handle->new(
 			handle => $handle,
 			on_read_ready => $on_read,
@@ -136,9 +143,10 @@ sub _id {
 
 sub _loop { shift->{loop} ||= IO::Async::Loop->new }
 
-sub _sandbox {
-	my ($self, $event, $cb) = (shift, shift, shift);
-	eval { $self->$cb(@_); 1 } or $self->emit(error => "$event failed: $@");
+sub _next {
+	my $self = shift;
+	delete $self->{next_timer};
+	while (my $cb = shift @{$self->{next_tick}}) { $self->$cb }
 }
 
 sub _timer {
@@ -155,7 +163,7 @@ sub _timer {
 			delete $self->{timers}{$id};
 		}
 		#warn "-- Event fired for timer $id\n" if DEBUG;
-		$self->_sandbox("Timer $id", $cb);
+		$self->_try('Timer', $cb);
 	};
 	my $w = $self->{timers}{$id}{watcher} = IO::Async::Timer::Countdown->new(
 		delay => $after,
@@ -171,6 +179,11 @@ sub _timer {
 	return $id;
 }
 
+sub _try {
+	my ($self, $what, $cb) = (shift, shift, shift);
+	eval { $self->$cb(@_); 1 } or $self->emit(error => "$what failed: $@");
+}
+
 =head1 NAME
 
 Mojo::Reactor::IOAsync - IO::Async backend for Mojo::Reactor
@@ -181,18 +194,26 @@ Mojo::Reactor::IOAsync - IO::Async backend for Mojo::Reactor
 
   # Watch if handle becomes readable or writable
   my $reactor = Mojo::Reactor::IOAsync->new;
-  $reactor->io($handle => sub {
+  $reactor->io($first => sub {
     my ($reactor, $writable) = @_;
-    say $writable ? 'Handle is writable' : 'Handle is readable';
+    say $writable ? 'First handle is writable' : 'First handle is readable';
   });
 
   # Change to watching only if handle becomes writable
-  $reactor->watch($handle, 0, 1);
+  $reactor->watch($first, 0, 1);
+
+  # Turn file descriptor into handle and watch if it becomes readable
+  my $second = IO::Handle->new_from_fd($fd, 'r');
+  $reactor->io($second => sub {
+    my ($reactor, $writable) = @_;
+    say $writable ? 'Second handle is writable' : 'Second handle is readable';
+  })->watch($second, 1, 0);
 
   # Add a timer
   $reactor->timer(15 => sub {
     my $reactor = shift;
-    $reactor->remove($handle);
+    $reactor->remove($first);
+    $reactor->remove($second);
     say 'Timeout!';
   });
 
@@ -250,6 +271,13 @@ Check if reactor is running.
   my $reactor = Mojo::Reactor::IOAsync->new;
 
 Construct a new L<Mojo::Reactor::IOAsync> object.
+
+=head2 next_tick
+
+  my $undef = $reactor->next_tick(sub {...});
+
+Invoke callback as soon as possible, but not before returning or other
+callbacks that have been registered with this method, always returns C<undef>.
 
 =head2 one_tick
 
