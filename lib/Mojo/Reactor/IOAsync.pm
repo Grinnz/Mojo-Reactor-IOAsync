@@ -13,7 +13,7 @@ use Scalar::Util 'weaken';
 
 use constant DEBUG => $ENV{MOJO_REACTOR_IOASYNC_DEBUG} || 0;
 
-our $VERSION = '0.005';
+our $VERSION = '0.006';
 
 my $IOAsync;
 
