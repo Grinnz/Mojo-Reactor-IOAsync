@@ -3,16 +3,20 @@ use Mojo::Base -strict;
 use Test::More;
 use IO::Socket::INET;
 use Mojo::Reactor::IOAsync;
+use Scalar::Util 'refaddr';
 
 # Instantiation
 my $reactor = Mojo::Reactor::IOAsync->new;
+my $refaddr = refaddr $reactor->_loop;
 is ref $reactor, 'Mojo::Reactor::IOAsync', 'right object';
-is ref Mojo::Reactor::IOAsync->new, 'Mojo::Reactor::Poll', 'right object';
+is ref Mojo::Reactor::IOAsync->new, 'Mojo::Reactor::IOAsync', 'right object';
+isnt refaddr(Mojo::Reactor::IOAsync->new->_loop), $refaddr, 'loop is not singleton';
 undef $reactor;
 is ref Mojo::Reactor::IOAsync->new, 'Mojo::Reactor::IOAsync', 'right object';
 use_ok 'Mojo::IOLoop';
 $reactor = Mojo::IOLoop->singleton->reactor;
 is ref $reactor, 'Mojo::Reactor::IOAsync', 'right object';
+is refaddr($reactor->_loop), $refaddr, 'loop is singleton';
 
 # Make sure it stops automatically when not watching for events
 my $triggered;
@@ -142,7 +146,8 @@ ok !$readable,  'io event was not triggered again';
 ok !$writable,  'io event was not triggered again';
 ok !$recurring, 'recurring was not triggered again';
 my $reactor2 = Mojo::Reactor::IOAsync->new;
-is ref $reactor2, 'Mojo::Reactor::Poll', 'right object';
+is ref $reactor2, 'Mojo::Reactor::IOAsync', 'right object';
+isnt refaddr($reactor->_loop), refaddr($reactor2->_loop), 'different refaddr';
 
 # Ordered next tick
 my $result = [];
@@ -241,7 +246,7 @@ is(Mojo::Reactor->detect, 'Mojo::Reactor::IOAsync', 'right class');
 
 # Dummy reactor
 package Mojo::Reactor::Test;
-use Mojo::Base 'Mojo::Reactor::Poll';
+use Mojo::Base 'Mojo::Reactor::IOAsync';
 
 package main;
 

@@ -18,8 +18,9 @@ our $VERSION = '0.006';
 my $IOAsync;
 
 sub DESTROY {
-	shift->reset;
-	undef $IOAsync;
+	my $self = shift;
+	$self->reset;
+	undef $IOAsync if $self->{loop_singleton};
 }
 
 sub again {
@@ -38,8 +39,12 @@ sub io {
 
 sub is_running { !!shift->{running} }
 
-# We have to fall back to Mojo::Reactor::Poll, since IO::Async::Loop is unique
-sub new { $IOAsync++ ? Mojo::Reactor::Poll->new : shift->SUPER::new }
+# Use IO::Async::Loop singleton for the first instance
+sub new {
+	my $self = shift->SUPER::new;
+	$self->{loop_singleton} = 1 unless $IOAsync++;
+	return $self;
+}
 
 sub next_tick {
 	my ($self, $cb) = @_;
@@ -141,7 +146,10 @@ sub _id {
 	return $id;
 }
 
-sub _loop { shift->{loop} ||= IO::Async::Loop->new }
+sub _loop {
+	my $self = shift;
+	$self->{loop} ||= $self->{loop_singleton} ? IO::Async::Loop->new : IO::Async::Loop->really_new;
+}
 
 sub _next {
 	my $self = shift;
