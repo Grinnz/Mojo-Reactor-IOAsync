@@ -56,17 +56,13 @@ sub next_tick {
 sub one_tick {
 	my $self = shift;
 	
-	# Remember state for later
-	my $running = $self->{running};
-	$self->{running} = 1;
+	# Just one tick
+	local $self->{running} = 1 unless $self->{running};
 	
 	# Stop automatically if there is nothing to watch
 	return $self->stop unless $self->_loop->notifiers;
 	
 	$self->_loop->loop_once;
-	
-	# Restore state if necessary
-	$self->{running} = $running if $self->{running};
 }
 
 sub recurring { shift->_timer(1, @_) }
