@@ -66,6 +66,7 @@ sub recurring { shift->_timer(1, @_) }
 
 sub remove {
 	my ($self, $remove) = @_;
+	return !!0 unless defined $remove;
 	if (ref $remove) {
 		my $fd = fileno $remove;
 		my $io = delete $self->{io}{$fd};
