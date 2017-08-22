@@ -16,10 +16,15 @@ our $VERSION = '0.006';
 
 my $IOAsync;
 
-# Use IO::Async::Loop singleton for the first instance
+# Use IO::Async::Loop singleton for the first instance only
 sub new {
 	my $self = shift->SUPER::new;
-	$self->{loop_singleton} = 1 unless $IOAsync++;
+	if ($IOAsync++) {
+		$self->{loop} = IO::Async::Loop->really_new;
+	} else {
+		$self->{loop} = IO::Async::Loop->new;
+		$self->{loop_singleton} = 1;
+	}
 	return $self;
 }
 
@@ -59,9 +64,9 @@ sub one_tick {
 	local $self->{running} = 1 unless $self->{running};
 	
 	# Stop automatically if there is nothing to watch
-	return $self->stop unless $self->_loop->notifiers;
+	return $self->stop unless $self->{loop}->notifiers;
 	
-	$self->_loop->loop_once;
+	$self->{loop}->loop_once;
 }
 
 sub recurring { shift->_timer(1, @_) }
@@ -104,7 +109,7 @@ sub start {
 sub stop {
 	my $self = shift;
 	delete $self->{running};
-	$self->_loop->loop_stop;
+	$self->{loop}->loop_stop;
 }
 
 sub timer { shift->_timer(0, @_) }
@@ -128,7 +133,7 @@ sub watch {
 			want_readready => $read,
 			want_writeready => $write,
 		);
-		$self->_loop->add($w);
+		$self->{loop}->add($w);
 	}
 	
 	return $self;
@@ -137,13 +142,8 @@ sub watch {
 sub _id {
 	my $self = shift;
 	my $id;
-	do { $id = md5_sum 't' . $self->_loop->time . rand 999 } while $self->{timers}{$id};
+	do { $id = md5_sum 't' . $self->{loop}->time . rand 999 } while $self->{timers}{$id};
 	return $id;
-}
-
-sub _loop {
-	my $self = shift;
-	$self->{loop} ||= $self->{loop_singleton} ? IO::Async::Loop->new : IO::Async::Loop->really_new;
 }
 
 sub _next {
@@ -172,7 +172,7 @@ sub _timer {
 		delay => $after,
 		on_expire => $on_expire,
 	)->start;
-	$self->_loop->add($w);
+	$self->{loop}->add($w);
 	
 	if (DEBUG) {
 		my $is_recurring = $recurring ? ' (recurring)' : '';
