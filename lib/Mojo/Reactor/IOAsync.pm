@@ -7,7 +7,6 @@ use Carp 'croak';
 use IO::Async::Loop;
 use IO::Async::Handle;
 use IO::Async::Timer::Countdown;
-use Mojo::Reactor::Poll;
 use Mojo::Util 'md5_sum';
 use Scalar::Util 'weaken';
 
@@ -16,6 +15,13 @@ use constant DEBUG => $ENV{MOJO_REACTOR_IOASYNC_DEBUG} || 0;
 our $VERSION = '0.006';
 
 my $IOAsync;
+
+# Use IO::Async::Loop singleton for the first instance
+sub new {
+	my $self = shift->SUPER::new;
+	$self->{loop_singleton} = 1 unless $IOAsync++;
+	return $self;
+}
 
 sub DESTROY {
 	my $self = shift;
@@ -38,13 +44,6 @@ sub io {
 }
 
 sub is_running { !!shift->{running} }
-
-# Use IO::Async::Loop singleton for the first instance
-sub new {
-	my $self = shift->SUPER::new;
-	$self->{loop_singleton} = 1 unless $IOAsync++;
-	return $self;
-}
 
 sub next_tick {
 	my ($self, $cb) = @_;

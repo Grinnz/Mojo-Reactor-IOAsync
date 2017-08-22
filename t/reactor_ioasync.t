@@ -1,5 +1,7 @@
 use Mojo::Base -strict;
 
+BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::IOAsync' }
+
 use Test::More;
 use IO::Socket::INET;
 use Mojo::Reactor::IOAsync;
