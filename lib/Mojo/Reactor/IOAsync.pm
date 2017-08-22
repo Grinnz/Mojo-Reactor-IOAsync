@@ -1,5 +1,5 @@
 package Mojo::Reactor::IOAsync;
-use Mojo::Base 'Mojo::Reactor';
+use Mojo::Base 'Mojo::Reactor::Poll';
 
 $ENV{MOJO_REACTOR} ||= 'Mojo::Reactor::IOAsync';
 
@@ -50,13 +50,6 @@ sub io {
 
 sub is_running { !!shift->{running} }
 
-sub next_tick {
-	my ($self, $cb) = @_;
-	push @{$self->{next_tick}}, $cb;
-	$self->{next_timer} //= $self->timer(0 => \&_next);
-	return undef;
-}
-
 sub one_tick {
 	my $self = shift;
 	
@@ -64,7 +57,7 @@ sub one_tick {
 	local $self->{running} = 1 unless $self->{running};
 	
 	# Stop automatically if there is nothing to watch
-	return $self->stop unless $self->{loop}->notifiers;
+	return $self->stop unless keys %{$self->{timers}} || keys %{$self->{io}} || $self->{loop}->notifiers;
 	
 	$self->{loop}->loop_once;
 }
@@ -73,36 +66,35 @@ sub recurring { shift->_timer(1, @_) }
 
 sub remove {
 	my ($self, $remove) = @_;
-	return unless defined $remove;
 	if (ref $remove) {
 		my $fd = fileno $remove;
-		if (exists $self->{io}{$fd}) {
+		my $io = delete $self->{io}{$fd};
+		if ($io) {
 			warn "-- Removed IO watcher for $fd\n" if DEBUG;
-			my $w = delete $self->{io}{$fd}{watcher};
-			$w->remove_from_parent if $w;
+			$io->{watcher}->remove_from_parent if $io->{watcher};
 		}
-		return !!delete $self->{io}{$fd};
+		return !!$io;
 	} else {
-		if (exists $self->{timers}{$remove}) {
+		my $timer = delete $self->{timers}{$remove};
+		if ($timer) {
 			warn "-- Removed timer $remove\n" if DEBUG;
-			my $w = delete $self->{timers}{$remove}{watcher};
-			$w->remove_from_parent if $w;
+			$timer->{watcher}->remove_from_parent if $timer->{watcher};
 		}
-		return !!delete $self->{timers}{$remove};
+		return !!$timer;
 	}
 }
 
 sub reset {
 	my $self = shift;
 	$_->remove_from_parent for
-		grep { defined } map { delete $_->{watcher} }
+		map { $_->{watcher} ? ($_->{watcher}) : () }
 		values %{$self->{io}}, values %{$self->{timers}};
-	delete @{$self}{qw(io next_tick next_timer timers)};
+	delete @{$self}{qw(events io next_tick next_timer timers)};
 }
 
 sub start {
 	my $self = shift;
-	$self->{running}++;
+	local $self->{running} = ($self->{running} || 0) + 1;
 	$self->one_tick while $self->{running};
 }
 
@@ -280,13 +272,6 @@ readable or writable.
   my $bool = $reactor->is_running;
 
 Check if reactor is running.
-
-=head2 next_tick
-
-  my $undef = $reactor->next_tick(sub {...});
-
-Invoke callback as soon as possible, but not before returning or other
-callbacks that have been registered with this method, always returns C<undef>.
 
 =head2 one_tick
 
