@@ -56,11 +56,11 @@ C<Mojo::Reactor::IOAsync>.
 
 =head1 EVENTS
 
-L<Mojo::Reactor::IOAsync> inherits all events from L<Mojo::Reactor>.
+L<Mojo::Reactor::IOAsync> inherits all events from L<Mojo::Reactor::Poll>.
 
 =head1 METHODS
 
-L<Mojo::Reactor::IOAsync> inherits all methods from L<Mojo::Reactor> and
+L<Mojo::Reactor::IOAsync> inherits all methods from L<Mojo::Reactor::Poll> and
 implements the following new ones.
 
 =head2 new
@@ -88,25 +88,12 @@ readable or writable.
     say $writable ? 'Handle is writable' : 'Handle is readable';
   });
 
-=head2 is_running
-
-  my $bool = $reactor->is_running;
-
-Check if reactor is running.
-
-=head2 next_tick
-
-  my $undef = $reactor->next_tick(sub {...});
-
-Invoke callback as soon as possible, but not before returning or other
-callbacks that have been registered with this method, always returns C<undef>.
-
 =head2 one_tick
 
   $reactor->one_tick;
 
-Run reactor until an event occurs or no events are being watched anymore. Note
-that this method can recurse back into the reactor, so you need to be careful.
+Run reactor until an event occurs or no events are being watched anymore. See
+L</"CAVEATS">.
 
   # Don't block longer than 0.5 seconds
   my $id = $reactor->timer(0.5 => sub {});
@@ -132,16 +119,6 @@ Remove handle or timer.
   $reactor->reset;
 
 Remove all handles and timers.
-
-=head2 start
-
-  $reactor->start;
-
-Start watching for I/O and timer events, this will block until L</"stop"> is
-called or no events are being watched anymore. See L</"CAVEATS">.
-
-  # Start reactor only if it is not running already
-  $reactor->start unless $reactor->is_running;
 
 =head2 stop
 
@@ -179,9 +156,9 @@ this method requires an active I/O watcher.
 
 When using L<Mojo::IOLoop> with L<IO::Async>, the event loop must be controlled
 by L<Mojo::IOLoop> or L<Mojo::Reactor::IOAsync>, such as with the methods
-L</"start">, L</"stop">, and L</"one_tick">. Starting or stopping the event
-loop through L<IO::Async> will not provide required functionality to
-L<Mojo::IOLoop> applications.
+L<Mojo::Reactor::Poll/"start">, L</"stop">, and L</"one_tick">. Starting or
+stopping the event loop through L<IO::Async> will not provide required
+functionality to L<Mojo::IOLoop> applications.
 
 Externally-added L<IO::Async> notifiers will keep the L<Mojo::IOLoop> loop
 running if they are added to the event loop as a notifier, see
