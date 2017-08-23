@@ -48,8 +48,6 @@ sub io {
 	return $self->watch($handle, 1, 1);
 }
 
-sub is_running { !!shift->{running} }
-
 sub one_tick {
 	my $self = shift;
 	
@@ -90,13 +88,7 @@ sub reset {
 	$_->remove_from_parent for
 		map { $_->{watcher} ? ($_->{watcher}) : () }
 		values %{$self->{io}}, values %{$self->{timers}};
-	delete @{$self}{qw(events io next_tick next_timer timers)};
-}
-
-sub start {
-	my $self = shift;
-	local $self->{running} = ($self->{running} || 0) + 1;
-	$self->one_tick while $self->{running};
+	$self->SUPER::reset;
 }
 
 sub stop {
@@ -137,12 +129,6 @@ sub _id {
 	my $id;
 	do { $id = md5_sum 't' . $self->{loop}->time . rand 999 } while $self->{timers}{$id};
 	return $id;
-}
-
-sub _next {
-	my $self = shift;
-	delete $self->{next_timer};
-	while (my $cb = shift @{$self->{next_tick}}) { $self->$cb }
 }
 
 sub _timer {
@@ -236,11 +222,11 @@ C<Mojo::Reactor::IOAsync>.
 
 =head1 EVENTS
 
-L<Mojo::Reactor::IOAsync> inherits all events from L<Mojo::Reactor>.
+L<Mojo::Reactor::IOAsync> inherits all events from L<Mojo::Reactor::Poll>.
 
 =head1 METHODS
 
-L<Mojo::Reactor::IOAsync> inherits all methods from L<Mojo::Reactor> and
+L<Mojo::Reactor::IOAsync> inherits all methods from L<Mojo::Reactor::Poll> and
 implements the following new ones.
 
 =head2 new
@@ -268,18 +254,12 @@ readable or writable.
     say $writable ? 'Handle is writable' : 'Handle is readable';
   });
 
-=head2 is_running
-
-  my $bool = $reactor->is_running;
-
-Check if reactor is running.
-
 =head2 one_tick
 
   $reactor->one_tick;
 
-Run reactor until an event occurs or no events are being watched anymore. Note
-that this method can recurse back into the reactor, so you need to be careful.
+Run reactor until an event occurs or no events are being watched anymore. See
+L</"CAVEATS">.
 
   # Don't block longer than 0.5 seconds
   my $id = $reactor->timer(0.5 => sub {});
@@ -305,16 +285,6 @@ Remove handle or timer.
   $reactor->reset;
 
 Remove all handles and timers.
-
-=head2 start
-
-  $reactor->start;
-
-Start watching for I/O and timer events, this will block until L</"stop"> is
-called or no events are being watched anymore. See L</"CAVEATS">.
-
-  # Start reactor only if it is not running already
-  $reactor->start unless $reactor->is_running;
 
 =head2 stop
 
@@ -352,9 +322,9 @@ this method requires an active I/O watcher.
 
 When using L<Mojo::IOLoop> with L<IO::Async>, the event loop must be controlled
 by L<Mojo::IOLoop> or L<Mojo::Reactor::IOAsync>, such as with the methods
-L</"start">, L</"stop">, and L</"one_tick">. Starting or stopping the event
-loop through L<IO::Async> will not provide required functionality to
-L<Mojo::IOLoop> applications.
+L<Mojo::Reactor::Poll/"start">, L</"stop">, and L</"one_tick">. Starting or
+stopping the event loop through L<IO::Async> will not provide required
+functionality to L<Mojo::IOLoop> applications.
 
 Externally-added L<IO::Async> notifiers will keep the L<Mojo::IOLoop> loop
 running if they are added to the event loop as a notifier, see
