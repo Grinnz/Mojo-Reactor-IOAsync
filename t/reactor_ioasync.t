@@ -1,6 +1,6 @@
 use Mojo::Base -strict;
 
-BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::IOAsync' }
+BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::IOAsync'; $ENV{IO_ASYNC_LOOP} = 'Poll,Select'; }
 
 use Test::More;
 use IO::Socket::INET;
