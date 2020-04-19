@@ -35,9 +35,12 @@ sub DESTROY {
 }
 
 sub again {
-	my ($self, $id) = @_;
+	my ($self, $id, $after) = @_;
 	croak 'Timer not active' unless my $timer = $self->{timers}{$id};
-	$timer->{watcher}->reset;
+	my $w = $timer->{watcher};
+	$w->stop;
+	$w->configure(delay => $after) if defined $after;
+	$w->start;
 }
 
 sub io {
@@ -238,8 +241,10 @@ Construct a new L<Mojo::Reactor::IOAsync> object.
 =head2 again
 
   $reactor->again($id);
+  $reactor->again($id, 0.5);
 
-Restart timer. Note that this method requires an active timer.
+Restart timer and optionally change the invocation time. Note that this method
+requires an active timer.
 
 =head2 io
 
