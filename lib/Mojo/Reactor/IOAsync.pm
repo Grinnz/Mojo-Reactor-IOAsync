@@ -7,7 +7,7 @@ use Carp 'croak';
 use IO::Async::Loop;
 use IO::Async::Handle;
 use IO::Async::Timer::Countdown;
-use Mojo::Util 'md5_sum';
+use Mojo::Util qw(md5_sum steady_time);
 use Scalar::Util 'weaken';
 
 use constant DEBUG => $ENV{MOJO_REACTOR_IOASYNC_DEBUG} || 0;
@@ -45,7 +45,7 @@ sub again {
 
 sub io {
 	my ($self, $handle, $cb) = @_;
-	my $fd = fileno $handle;
+	my $fd = fileno($handle) // croak 'Handle is closed';
 	$self->{io}{$fd}{cb} = $cb;
 	warn "-- Set IO watcher for $fd\n" if DEBUG;
 	return $self->watch($handle, 1, 1);
@@ -54,11 +54,11 @@ sub io {
 sub one_tick {
 	my $self = shift;
 	
-	# Just one tick
-	local $self->{running} = 1 unless $self->{running};
-	
 	# Stop automatically if there is nothing to watch
 	return $self->stop unless keys %{$self->{timers}} || keys %{$self->{io}} || $self->{loop}->notifiers;
+	
+	# Just one tick
+	local $self->{running} = 1 unless $self->{running};
 	
 	$self->{loop}->loop_once;
 }
@@ -69,7 +69,7 @@ sub remove {
 	my ($self, $remove) = @_;
 	return !!0 unless defined $remove;
 	if (ref $remove) {
-		my $fd = fileno $remove;
+		my $fd = fileno($remove) // croak 'Handle is closed';
 		my $io = delete $self->{io}{$fd};
 		if ($io) {
 			warn "-- Removed IO watcher for $fd\n" if DEBUG;
@@ -130,7 +130,7 @@ sub watch {
 sub _id {
 	my $self = shift;
 	my $id;
-	do { $id = md5_sum 't' . $self->{loop}->time . rand 999 } while $self->{timers}{$id};
+	do { $id = md5_sum 't' . steady_time . rand } while $self->{timers}{$id};
 	return $id;
 }
 
